@@ -945,16 +945,35 @@ class Affine(meta.Augmenter):
             matrix, output_shape = self._tf_to_fit_output(image.shape, matrix)
             dsize = (int(np.round(output_shape[1])), int(np.round(output_shape[0])))
 
-        # TODO this uses always a tuple of 3 values for cval, even if #chans != 3, works with 1d but what in other
-        # cases?
-        image_warped = cv2.warpAffine(
-            image,
-            matrix.params[:2],
-            dsize=dsize,
-            flags=order,
-            borderMode=mode,
-            borderValue=cval
-        )
+        channels_nb = 1
+        if 3 == image.ndim:
+            channels_nb = image.shape[2]
+                
+        # cv2.warpAffine is not implemented for N-channels images.
+        # OpenCV (and Intel Performance Primitives) just allows 1 to 4 channels images
+        # These functions are slightly faster than warping each channels independently
+        if 4 >= channels_nb:
+            # TODO this uses always a tuple of 3 values for cval, even if #chans != 3, works with 1d but what in other
+            # cases?
+            image_warped = cv2.warpAffine(
+                image,
+                matrix.params[:2],
+                dsize=dsize,
+                flags=order,
+                borderMode=mode,
+                borderValue=cval
+            )
+        else:
+            image_warped = np.zeros(image.shape, dtype=image.dtype)
+            for i in range(0, channels_nb):
+                image_warped[:, :, i] = cv2.warpAffine(
+                    image[:, :, i],
+                    matrix.params[:2],
+                    dsize=dsize,
+                    flags=order,
+                    borderMode=mode,
+                    borderValue=cval
+                )
 
         # cv2 warp drops last axis if shape is (H, W, 1)
         if image_warped.ndim == 2:
